@@ -13,7 +13,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
  
-    --primary: 14 89% 54%;
+    /* WARNA PRIMER DIUBAH MENJADI HIJAU SESUAI LOGO */
+    --primary: 122 73% 54%; 
     --primary-foreground: 0 0% 100%;
  
     --secondary: 240 4.8% 95.9%;
@@ -30,7 +31,9 @@
 
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
-    --ring: 14 89% 54%;
+    
+    /* WARNA RING/FOCUS DIUBAH MENJADI HIJAU JUGA */
+    --ring: 122 73% 54%;
  
     --radius: 0.5rem;
   }
