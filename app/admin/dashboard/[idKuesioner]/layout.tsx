@@ -23,13 +23,15 @@ export default function DashboardLayout({
 
   const [allQuestionnaires, setAllQuestionnaires] = useState<Questionnaire[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // State untuk sidebar mobile
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const supabase = createClientComponentClient();
 
   useEffect(() => {
     const fetchQuestionnaires = async () => {
-      const { data } = await supabase.from('questionnaires').select('id, name');
-      if (data) {
+      const { data, error } = await supabase.from('questionnaires').select('id, name');
+      if (error) {
+        console.error("Gagal mengambil daftar kuesioner:", error);
+      } else if (data) {
         setAllQuestionnaires(data);
       }
     };
@@ -78,12 +80,10 @@ export default function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      {/* Sidebar untuk Desktop */}
       <aside className="w-64 flex-shrink-0 bg-white border-r hidden md:block">
         <SidebarContent />
       </aside>
 
-      {/* Sidebar untuk Mobile */}
       {isSidebarOpen && (
         <div className="fixed inset-0 flex z-40 md:hidden">
           <div className="fixed inset-0 bg-black opacity-30" onClick={() => setIsSidebarOpen(false)}></div>
@@ -101,7 +101,6 @@ export default function DashboardLayout({
       <div className="flex-1 flex flex-col">
         <header className="bg-white shadow-sm border-b">
           <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
-            {/* Tombol Hamburger Menu untuk Mobile */}
             <button onClick={() => setIsSidebarOpen(true)} className="md:hidden mr-4 text-gray-500 hover:text-gray-700">
               <Menu className="h-6 w-6" />
             </button>
@@ -109,7 +108,7 @@ export default function DashboardLayout({
             <div className="relative">
               <button 
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
-                onBlur={() => setTimeout(() => setIsDropdownOpen(false), 150)}
+                onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
                 className="flex items-center justify-between w-48 md:w-64 p-2 bg-gray-50 border rounded-md text-left"
               >
                 <span className="font-semibold text-gray-700 truncate">{currentQuestionnaire?.name || 'Memuat...'}</span>
@@ -120,9 +119,10 @@ export default function DashboardLayout({
                   <ul>
                     {allQuestionnaires.map(q => (
                       <li key={q.id}>
+                        {/* --- PERBAIKAN DI SINI --- */}
                         <Link 
                           href={`/admin/dashboard/${q.id}`} 
-                          onClick={() => setIsDropdownOpen(false)}
+                          // Hapus onClick dari sini
                           className="flex items-center justify-between w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                         >
                           <span>{q.name}</span>
