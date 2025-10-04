@@ -2,11 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'; // <-- Gunakan ini
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 
-// ... (Fungsi error helper kamu sudah bagus, tidak perlu diubah)
 interface ErrorWithMessage {
   message: string;
 }
@@ -27,62 +25,23 @@ function getErrorMessage(error: unknown) {
   return String(error);
 }
 
-
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-
-  // 2. Buat client Supabase di dalam komponen
-  const supabase = createClientComponentClient(); 
+  const supabase = createClientComponentClient();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-
     try {
-      // Sekarang, 'supabase' di sini sudah benar
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-
-      // Redirect akan berhasil karena cookie sudah di-set dengan benar
       router.push('/admin/dashboard');
-
-      // router.refresh() opsional, berguna untuk me-refresh data di server component
-      // Biarkan saja, ini praktik yang bagus.
-      //router.refresh(); 
-
     } catch (error) {
-      console.error('Error logging in:', error);
-      setError(getErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSignUp = async () => {
-    // ... (Fungsi handleSignUp kamu juga harus menggunakan client yang sama)
-    setLoading(true);
-    setError(null);
-
-    try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      alert('Akun admin berhasil dibuat! Silakan cek email untuk verifikasi.');
-    } catch (error) {
-      console.error('Error signing up:', error);
       setError(getErrorMessage(error));
     } finally {
       setLoading(false);
@@ -113,7 +72,8 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+              // --- PERUBAHAN WARNA FOKUS ---
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="email@example.com"
               required
             />
@@ -128,7 +88,8 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+              // --- PERUBAHAN WARNA FOKUS ---
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               placeholder="Password"
               required
             />
@@ -137,37 +98,25 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-2 px-4 rounded-md text-white font-medium ${
+            // --- PERUBAHAN WARNA TOMBOL ---
+            className={`w-full py-2 px-4 rounded-md text-white font-medium transition-colors ${
               loading 
                 ? 'bg-gray-400 cursor-not-allowed' 
-                : 'bg-orange-500 hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500'
+                : 'bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary'
             }`}
           >
             {loading ? 'Memproses...' : 'Login'}
           </button>
         </form>
 
-        <div className="mt-6">
-          <button
-            onClick={handleSignUp}
-            disabled={loading}
-            className={`w-full py-2 px-4 rounded-md text-white font-medium ${
-              loading 
-                ? 'bg-gray-400 cursor-not-allowed' 
-                : 'bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500'
-            }`}
-          >
-            Buat Akun Admin
-          </button>
-        </div>
-
         <div className="mt-6 text-center">
-          <a 
+          <Link 
             href="/" 
-            className="text-orange-500 hover:text-orange-700 font-medium"
+            // --- PERUBAHAN WARNA LINK ---
+            className="text-primary hover:text-primary/80 font-medium"
           >
             Kembali ke Beranda
-          </a>
+          </Link>
         </div>
       </div>
     </div>
