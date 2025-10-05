@@ -219,9 +219,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       </PopoverContent>
                     </Popover>
 
-                    <select value={jenisKelamin} onChange={(e) => setJenisKelamin(e.target.value)} className="rounded-md border-gray-300 text-sm shadow-sm focus:border-primary focus:ring-primary"><option value="Semua">Semua Kelamin</option><option value="Laki-laki">Laki-laki</option><option value="Perempuan">Perempuan</option></select>
-                    <select value={pekerjaan} onChange={(e) => setPekerjaan(e.target.value)} className="rounded-md border-gray-300 text-sm shadow-sm focus:border-primary focus:ring-primary"><option value="Semua">Semua Pekerjaan</option>{pekerjaanOptions.map(p => <option key={p} value={p}>{p}</option>)}</select>
-                    <select value={jaminan} onChange={(e) => setJaminan(e.target.value)} className="rounded-md border-gray-300 text-sm shadow-sm focus:border-primary focus:ring-primary"><option value="Semua">Semua Jaminan</option>{jaminanOptions.map(j => <option key={j} value={j}>{j}</option>)}</select>
+                      <select value={jaminan} onChange={(e) => setJaminan(e.target.value)} className="rounded-md border-gray-300 text-sm shadow-sm focus:border-primary focus:ring-primary"><option value="Semua">Semua Jaminan</option>{jaminanOptions.map(j => <option key={j} value={j}>{j}</option>)}</select>
                 </div>
             </div>
           )}
