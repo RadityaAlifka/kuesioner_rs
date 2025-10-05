@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { useFilter } from './layout';
+import { format } from 'date-fns';
 
-// --- Interfaces & Types ---
 interface DashboardStats { total_responden: number; }
 interface HeatmapData { question_id: string; pertanyaan: string; sangat_tidak_puas: number; tidak_puas: number; cukup_puas: number; puas: number; sangat_puas: number; }
 interface Question { id: string; type: 'scale' | 'yes_no_text'; }
@@ -15,6 +16,7 @@ const getErrorMessage = (error: unknown): string => (error && typeof error === '
 export default function OverviewPage() {
   const params = useParams();
   const questionnaireId = params.idKuesioner as string;
+  const { dateRange, jenisKelamin, pekerjaan, jaminan } = useFilter();
 
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([]);
@@ -26,13 +28,23 @@ export default function OverviewPage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!questionnaireId) return;
+      if (!questionnaireId || !dateRange?.from || !dateRange?.to) return;
       setLoading(true);
       setError(null);
+      
+      const filters = {
+        p_questionnaire_id: questionnaireId,
+        start_date: format(dateRange.from, 'yyyy-MM-dd'),
+        end_date: format(dateRange.to, 'yyyy-MM-dd'),
+        p_jenis_kelamin: jenisKelamin === 'Semua' ? null : jenisKelamin,
+        p_pekerjaan: pekerjaan === 'Semua' ? null : pekerjaan,
+        p_jaminan: jaminan === 'Semua' ? null : jaminan,
+      };
+
       try {
         const [statsRes, heatmapRes, questionsRes] = await Promise.all([
-          supabase.rpc('get_dashboard_stats', { p_questionnaire_id: questionnaireId }),
-          supabase.rpc('get_heatmap_summary', { p_questionnaire_id: questionnaireId }),
+          supabase.rpc('get_dashboard_stats', filters),
+          supabase.rpc('get_heatmap_summary', filters),
           supabase.from('questions').select('id, type').eq('questionnaire_id', questionnaireId)
         ]);
         
@@ -50,9 +62,8 @@ export default function OverviewPage() {
       }
     };
     fetchData();
-  }, [questionnaireId, supabase]);
+  }, [questionnaireId, supabase, dateRange, jenisKelamin, pekerjaan, jaminan]);
 
-  // --- DATA BARU UNTUK RADAR CHART ---
   const radarChartData = useMemo(() => {
     if (!heatmapData.length || !questions.length) return [];
     return heatmapData
@@ -62,9 +73,9 @@ export default function OverviewPage() {
         const totalVotes = row.sangat_tidak_puas + row.tidak_puas + row.cukup_puas + row.puas + row.sangat_puas;
         const average = totalVotes > 0 ? totalScore / totalVotes : 0;
         return {
-          subject: row.pertanyaan, // 'subject' adalah key yang dibutuhkan oleh RadarChart
+          subject: row.pertanyaan,
           score: parseFloat(average.toFixed(2)),
-          fullMark: 5, // Nilai maksimal untuk skala
+          fullMark: 5,
         };
       });
   }, [heatmapData, questions]);

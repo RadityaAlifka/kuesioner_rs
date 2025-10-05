@@ -27,8 +27,11 @@ const getErrorMessage = (error: unknown): string => (error && typeof error === '
 export default function KuesionerPage() {
   const params = useParams();
   const router = useRouter();
-  const questionnaireName = params.namaKuesioner === 'rawat-inap' ? 'Rawat Inap' : 'Rawat Jalan';
   
+  const slug = params.namaKuesioner as string;
+  const questionnaireName = slug === 'rawat-inap' ? 'Rawat Inap' : 
+                          slug === 'rawat-jalan' ? 'Rawat Jalan' : '';
+
   const [questionnaireId, setQuestionnaireId] = useState<string | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [responses, setResponses] = useState<Record<string, any>>({});
@@ -38,6 +41,7 @@ export default function KuesionerPage() {
   const [jenisKelamin, setJenisKelamin] = useState<string>('');
   const [pekerjaan, setPekerjaan] = useState<string>('');
   const [jaminan, setJaminan] = useState<string>('');
+  const [saran, setSaran] = useState<string>('');
 
   const [loading, setLoading] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -47,30 +51,21 @@ export default function KuesionerPage() {
 
   useEffect(() => {
     const fetchQuestionnaireData = async () => {
+      if (!questionnaireName) {
+          router.push('/');
+          return;
+      }
       setLoading(true);
       try {
-        const { data: questionnaireData, error: questionnaireError } = await supabase
-          .from('questionnaires')
-          .select('id')
-          .eq('name', questionnaireName)
-          .single();
-
-        if (questionnaireError) throw questionnaireError;
-        if (!questionnaireData) throw new Error(`Kuesioner "${questionnaireName}" tidak ditemukan.`);
+        const { data: qData, error: qError } = await supabase.from('questionnaires').select('id').eq('name', questionnaireName).single();
+        if (qError || !qData) throw new Error(`Kuesioner "${questionnaireName}" tidak ditemukan.`);
         
-        const qId = questionnaireData.id;
+        const qId = qData.id;
         setQuestionnaireId(qId);
 
-        const { data: questionsData, error: questionsError } = await supabase
-          .from('questions')
-          .select('*')
-          .eq('questionnaire_id', qId)
-          .eq('aktif', true)
-          .order('urutan', { ascending: true });
-
+        const { data: questionsData, error: questionsError } = await supabase.from('questions').select('*').eq('questionnaire_id', qId).eq('aktif', true).order('urutan', { ascending: true });
         if (questionsError) throw questionsError;
         setQuestions(questionsData || []);
-
       } catch (error) {
         console.error('Error fetching data:', getErrorMessage(error));
         router.push('/');
@@ -78,15 +73,12 @@ export default function KuesionerPage() {
         setLoading(false);
       }
     };
-
-    if (questionnaireName) {
-      fetchQuestionnaireData();
-    }
-  }, [questionnaireName, router]);
+    fetchQuestionnaireData();
+  }, [questionnaireName, router, slug]);
 
   const pages = useMemo(() => {
     if (questions.length === 0) return [];
-    const uniqueLabels = Array.from(new Set(questions.map(q => q.label)));
+    const uniqueLabels = [...new Set(questions.map(q => q.label))];
     const pageList: string[] = [];
     for (const label of uniqueLabels) {
         const questionsInLabel = questions.filter(q => q.label === label);
@@ -96,6 +88,7 @@ export default function KuesionerPage() {
             pageList.push(label);
         }
     }
+    pageList.push('Saran');
     return pageList;
   }, [questions]);
 
@@ -113,27 +106,26 @@ export default function KuesionerPage() {
 
   const handleNext = () => {
     const currentPage = pages[currentPageIndex];
-    const isSingleQuestionPage = questions.some(q => q.id === currentPage);
-    let questionsToValidate: Question[] = [];
-
-    if (isSingleQuestionPage) {
-        questionsToValidate = questions.filter(q => q.id === currentPage);
-    } else {
-        questionsToValidate = questions.filter(q => q.label === currentPage);
+    if (currentPage !== 'Saran') {
+        const isSingleQuestionPage = questions.some(q => q.id === currentPage);
+        let questionsToValidate: Question[] = [];
+        if (isSingleQuestionPage) {
+            questionsToValidate = questions.filter(q => q.id === currentPage);
+        } else {
+            questionsToValidate = questions.filter(q => q.label === currentPage);
+        }
+        for (const question of questionsToValidate) {
+            const response = responses[question.id];
+            if (question.type === 'scale' && !response) {
+                alert(`Harap menjawab pertanyaan: "${question.text}"`);
+                return;
+            }
+            if (question.type === 'yes_no_text' && (!response || !response.choice)) {
+                alert(`Harap memilih "Ya" atau "Tidak" untuk pertanyaan: "${question.text}"`);
+                return;
+            }
+        }
     }
-
-    for (const question of questionsToValidate) {
-      const response = responses[question.id];
-      if (question.type === 'scale' && !response) {
-        alert(`Harap menjawab pertanyaan: "${question.text}"`);
-        return;
-      }
-      if (question.type === 'yes_no_text' && (!response || !response.choice)) {
-        alert(`Harap memilih "Ya" atau "Tidak" untuk pertanyaan: "${question.text}"`);
-        return;
-      }
-    }
-
     if (currentPageIndex < pages.length - 1) {
       setCurrentPageIndex(prevIndex => prevIndex + 1);
     } else {
@@ -167,9 +159,8 @@ export default function KuesionerPage() {
     try {
       const { data: responseData, error: responseError } = await supabase
         .from('responses')
-        .insert([{ questionnaire_id: questionnaireId, nama, usia: parseInt(usia), jenis_kelamin: jenisKelamin, pekerjaan, jaminan }])
+        .insert([{ questionnaire_id: questionnaireId, nama, usia: parseInt(usia), jenis_kelamin: jenisKelamin, pekerjaan, jaminan, saran }])
         .select();
-
       if (responseError) throw responseError;
       if (!responseData || responseData.length === 0) throw new Error('Gagal membuat respons');
       
@@ -179,10 +170,10 @@ export default function KuesionerPage() {
         question_id: questionId,
         value: typeof value === 'object' ? JSON.stringify(value) : value
       }));
-
-      const { error: answersError } = await supabase.from('answers').insert(answersToInsert);
-      if (answersError) throw answersError;
-
+      if (answersToInsert.length > 0) {
+        const { error: answersError } = await supabase.from('answers').insert(answersToInsert);
+        if (answersError) throw answersError;
+      }
       window.location.href = '/thankyou';
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -193,17 +184,24 @@ export default function KuesionerPage() {
   };
   
   const progress = pages.length > 0 ? ((currentPageIndex + 1) / pages.length) * 100 : 0;
+  
   const currentPageIdentifier = pages[currentPageIndex];
-  const isSingleQuestionPage = questions.some(q => q.id === currentPageIdentifier);
+  const isSaranPage = currentPageIdentifier === 'Saran';
+  const isSingleQuestionPage = useMemo(() => questions.some(q => q.id === currentPageIdentifier), [questions, currentPageIdentifier]);
   
   let pageContent: Question[] = [];
   let pageLabel = '';
-  if (isSingleQuestionPage) {
-      pageContent = questions.filter(q => q.id === currentPageIdentifier);
-      pageLabel = pageContent.length > 0 ? pageContent[0].label : '';
-  } else {
-      pageContent = questions.filter(q => q.label === currentPageIdentifier);
-      pageLabel = currentPageIdentifier;
+
+  if (isSaranPage) {
+    pageLabel = "Saran & Masukan";
+  } else if (currentPageIdentifier) {
+    if (isSingleQuestionPage) {
+        pageContent = questions.filter(q => q.id === currentPageIdentifier);
+        pageLabel = pageContent.length > 0 ? pageContent[0].label : '';
+    } else {
+        pageContent = questions.filter(q => q.label === currentPageIdentifier);
+        pageLabel = currentPageIdentifier;
+    }
   }
 
   if (loading) {
@@ -251,50 +249,66 @@ export default function KuesionerPage() {
                     <h3 className="text-xl font-semibold text-primary">{pageLabel}</h3>
                 </div>
 
-                {pageContent.map((question, index) => (
-                  <div key={question.id}>
-                    <p className="text-md font-medium text-center">{isSingleQuestionPage ? '' : `${index + 1}. `}{question.text}</p>
-                    
-                    {question.type === 'scale' && (
-                       <div className="mt-4">
-                        <div className="flex items-center justify-around sm:justify-between px-2 sm:px-4">
-                          {scaleOptions.map((label, idx) => {
-                            const value = (idx + 1).toString();
-                            return (
-                              <div key={value} className="flex flex-col items-center space-y-2" title={label}>
-                                <label htmlFor={`${question.id}-${value}`} className="text-sm font-medium text-gray-700 cursor-pointer">{idx + 1}</label>
-                                <input id={`${question.id}-${value}`} type="radio" name={question.id} value={value} checked={responses[question.id] === value} onChange={(e) => handleScaleChange(question.id, e.target.value)} required className="h-5 w-5 cursor-pointer border-gray-300 text-primary focus:ring-primary" />
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-                          <span>{scaleOptions[0]}</span>
-                          <span>{scaleOptions[4]}</span>
-                        </div>
-                      </div>
-                    )}
+                {isSaranPage ? (
+                    <div>
+                        <p className="text-center text-sm text-gray-500 mb-4">
+                            Apakah ada saran atau masukan lain yang ingin Anda sampaikan untuk perbaikan layanan kami?
+                        </p>
+                        <textarea
+                            id="saran"
+                            value={saran}
+                            onChange={(e) => setSaran(e.target.value)}
+                            rows={5}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            placeholder="Tuliskan saran Anda di sini (opsional)..."
+                        />
+                    </div>
+                ) : (
+                    pageContent.map((question, index) => (
+                      <div key={question.id}>
+                        <p className="text-md font-medium text-center">{!isSingleQuestionPage && `${index + 1}. `}{question.text}</p>
+                        
+                        {question.type === 'scale' && (
+                           <div className="mt-4">
+                            <div className="flex items-center justify-around sm:justify-between px-2 sm:px-4">
+                              {scaleOptions.map((label, idx) => {
+                                const value = (idx + 1).toString();
+                                return (
+                                  <div key={value} className="flex flex-col items-center space-y-2" title={label}>
+                                    <label htmlFor={`${question.id}-${value}`} className="text-sm font-medium text-gray-700 cursor-pointer">{idx + 1}</label>
+                                    <input id={`${question.id}-${value}`} type="radio" name={question.id} value={value} checked={responses[question.id] === value} onChange={(e) => handleScaleChange(question.id, e.target.value)} required className="h-5 w-5 cursor-pointer border-gray-300 text-primary focus:ring-primary" />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+                              <span>{scaleOptions[0]}</span>
+                              <span>{scaleOptions[4]}</span>
+                            </div>
+                          </div>
+                        )}
 
-                    {question.type === 'yes_no_text' && (
-                       <div className="mt-4 space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          {(['Ya', 'Tidak']).map(choice => (
-                            <label key={choice} className="relative cursor-pointer">
-                              <input type="radio" name={`${question.id}-choice`} value={choice} checked={responses[question.id]?.choice === choice} onChange={(e) => handleYesNoTextChange(question.id, 'choice', e.target.value)} required className="peer sr-only" />
-                              <div className="flex h-full items-center justify-center rounded-md border-2 border-muted bg-transparent p-4 text-center text-muted-foreground transition-all duration-200 peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground hover:border-primary/50">
-                                <span className="font-medium">{choice}</span>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                        <div>
-                          <label htmlFor={`keterangan-${question.id}`} className="mb-1 block text-sm font-medium text-gray-500">Keterangan (jika ada)</label>
-                          <input type="text" id={`keterangan-${question.id}`} value={responses[question.id]?.keterangan || ''} onChange={(e) => handleYesNoTextChange(question.id, 'keterangan', e.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Isi keterangan jika perlu..."/>
-                        </div>
+                        {question.type === 'yes_no_text' && (
+                           <div className="mt-4 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              {(['Ya', 'Tidak']).map(choice => (
+                                <label key={choice} className="relative cursor-pointer">
+                                  <input type="radio" name={`${question.id}-choice`} value={choice} checked={responses[question.id]?.choice === choice} onChange={(e) => handleYesNoTextChange(question.id, 'choice', e.target.value)} required className="peer sr-only" />
+                                  <div className="flex h-full items-center justify-center rounded-md border-2 border-muted bg-transparent p-4 text-center text-muted-foreground transition-all duration-200 peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground hover:border-primary/50">
+                                    <span className="font-medium">{choice}</span>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                            <div>
+                              <label htmlFor={`keterangan-${question.id}`} className="mb-1 block text-sm font-medium text-gray-500">Keterangan (jika ada)</label>
+                              <input type="text" id={`keterangan-${question.id}`} value={responses[question.id]?.keterangan || ''} onChange={(e) => handleYesNoTextChange(question.id, 'keterangan', e.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Isi keterangan jika perlu..."/>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                    ))
+                )}
               </div>
               
               <div className="mt-10 flex justify-between">

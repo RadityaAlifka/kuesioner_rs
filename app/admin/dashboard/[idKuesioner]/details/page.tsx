@@ -4,18 +4,19 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import { useFilter } from '../layout';
+import { format } from 'date-fns';
 
-// --- Interfaces & Types ---
 interface Question { id: string; text: string; label: string; urutan: number; type: 'scale' | 'yes_no_text'; }
 interface QuestionSummary { question_id: string; pertanyaan: string; label_jawaban: string; jumlah_jawaban: number; }
 
-// --- Helpers & Constants ---
 const COLORS: Record<string, string> = { "Sangat Puas": '#16a34a', "Puas": '#84cc16', "Cukup Puas": '#facc15', "Tidak Puas": '#fb923c', "Sangat Tidak Puas": '#ef4444', "Ya": '#16a34a', "Tidak": '#ef4444' };
 const getErrorMessage = (error: unknown): string => (error && typeof error === 'object' && 'message' in error ? String((error as { message: string }).message) : String(error));
 
 export default function DetailsPage() {
     const params = useParams();
     const questionnaireId = params.idKuesioner as string;
+    const { dateRange, jenisKelamin, pekerjaan, jaminan } = useFilter();
 
     const [questionSummary, setQuestionSummary] = useState<QuestionSummary[]>([]);
     const [questions, setQuestions] = useState<Question[]>([]);
@@ -25,11 +26,19 @@ export default function DetailsPage() {
 
     useEffect(() => {
         const fetchData = async () => {
-            if (!questionnaireId) return;
+            if (!questionnaireId || !dateRange?.from || !dateRange?.to) return;
             setLoading(true);
             try {
+                const filters = {
+                    p_questionnaire_id: questionnaireId, 
+                    start_date: format(dateRange.from, 'yyyy-MM-dd'),
+                    end_date: format(dateRange.to, 'yyyy-MM-dd'),
+                    p_jenis_kelamin: jenisKelamin === 'Semua' ? null : jenisKelamin,
+                    p_pekerjaan: pekerjaan === 'Semua' ? null : pekerjaan,
+                    p_jaminan: jaminan === 'Semua' ? null : jaminan,
+                };
                 const [summaryRes, questionsRes] = await Promise.all([
-                    supabase.rpc('get_questionnaire_summary', { p_questionnaire_id: questionnaireId }),
+                    supabase.rpc('get_questionnaire_summary', filters),
                     supabase.from('questions').select('*').eq('questionnaire_id', questionnaireId).order('urutan')
                 ]);
 
@@ -45,7 +54,7 @@ export default function DetailsPage() {
             }
         };
         fetchData();
-    }, [questionnaireId, supabase]);
+    }, [questionnaireId, supabase, dateRange, jenisKelamin, pekerjaan, jaminan]);
 
     const groupedQuestionCharts = useMemo(() => {
         if (!questionSummary.length || !questions.length) return [];

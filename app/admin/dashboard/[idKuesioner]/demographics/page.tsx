@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useFilter } from '../layout';
+import { format } from 'date-fns';
 
 interface DashboardStats { jenis_kelamin: Record<string, number>; rentang_usia: Record<string, number>; pekerjaan: Record<string, number>; jaminan: Record<string, number>; }
 const getErrorMessage = (error: unknown): string => (error && typeof error === 'object' && 'message' in error ? String((error as { message: string }).message) : String(error));
@@ -11,6 +13,7 @@ const getErrorMessage = (error: unknown): string => (error && typeof error === '
 export default function DemographicsPage() {
     const params = useParams();
     const questionnaireId = params.idKuesioner as string;
+    const { dateRange, jenisKelamin, pekerjaan, jaminan } = useFilter();
 
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [loading, setLoading] = useState(true);
@@ -19,15 +22,23 @@ export default function DemographicsPage() {
 
     useEffect(() => {
         const fetchStats = async () => {
-            if (!questionnaireId) return;
+            if (!questionnaireId || !dateRange?.from || !dateRange?.to) return;
             setLoading(true);
-            const { data, error } = await supabase.rpc('get_dashboard_stats', { p_questionnaire_id: questionnaireId });
+            const filters = {
+                p_questionnaire_id: questionnaireId,
+                start_date: format(dateRange.from, 'yyyy-MM-dd'),
+                end_date: format(dateRange.to, 'yyyy-MM-dd'),
+                p_jenis_kelamin: jenisKelamin === 'Semua' ? null : jenisKelamin,
+                p_pekerjaan: pekerjaan === 'Semua' ? null : pekerjaan,
+                p_jaminan: jaminan === 'Semua' ? null : jaminan,
+            };
+            const { data, error } = await supabase.rpc('get_dashboard_stats', filters);
             if (error) setError(getErrorMessage(error));
             else setStats(data);
             setLoading(false);
         };
         fetchStats();
-    }, [questionnaireId, supabase]);
+    }, [questionnaireId, supabase, dateRange, jenisKelamin, pekerjaan, jaminan]);
 
     const demographicCharts = useMemo(() => {
         if (!stats) return [];

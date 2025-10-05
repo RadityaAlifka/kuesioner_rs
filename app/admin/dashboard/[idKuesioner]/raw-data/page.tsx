@@ -4,9 +4,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { downloadCSV } from '@/lib/exportUtils';
+import { useFilter } from '../layout';
+import { format } from 'date-fns';
 
-// --- Interfaces & Types ---
-interface Response { id: string; created_at: string; nama: string; usia: number; jenis_kelamin: string; pekerjaan: string; jaminan: string; }
+interface Response { id: string; created_at: string; nama: string; usia: number; jenis_kelamin: string; pekerjaan: string; jaminan: string; saran: string; }
 interface Answer { id: string; response_id: string; question_id: string; value: string; }
 interface Question { id: string; text: string; type: 'scale' | 'yes_no_text'; }
 
@@ -25,6 +26,7 @@ const formatAnswerValue = (value: string): string => {
 export default function RawDataPage() {
     const params = useParams();
     const questionnaireId = params.idKuesioner as string;
+    const { dateRange, jenisKelamin, pekerjaan, jaminan } = useFilter();
 
     const [rawResponses, setRawResponses] = useState<Response[]>([]);
     const [rawAnswers, setRawAnswers] = useState<Answer[]>([]);
@@ -32,19 +34,31 @@ export default function RawDataPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<{ key: keyof Response; direction: 'asc' | 'desc' } | null>(null);
+    const [sortConfig, setSortConfig] = useState<{ key: keyof Response; direction: 'asc' | 'desc' } | null>({ key: 'created_at', direction: 'desc' });
     
     const supabase = createClientComponentClient();
 
     useEffect(() => {
         const fetchData = async () => {
-            if (!questionnaireId) return;
+            if (!questionnaireId || !dateRange?.from || !dateRange?.to) return;
             setLoading(true);
             try {
+                const endDatePlusOne = new Date(dateRange.to);
+                endDatePlusOne.setDate(endDatePlusOne.getDate() + 1);
+
+                let query = supabase.from('responses').select('*')
+                    .eq('questionnaire_id', questionnaireId)
+                    .gte('created_at', format(dateRange.from, 'yyyy-MM-dd'))
+                    .lt('created_at', format(endDatePlusOne, 'yyyy-MM-dd'))
+                    .order('created_at', { ascending: false });
+
+                if (jenisKelamin !== 'Semua') query = query.eq('jenis_kelamin', jenisKelamin);
+                if (pekerjaan !== 'Semua') query = query.eq('pekerjaan', pekerjaan);
+                if (jaminan !== 'Semua') query = query.eq('jaminan', jaminan);
+
                 const [responsesRes, questionsRes, answersRes] = await Promise.all([
-                    supabase.from('responses').select('*').eq('questionnaire_id', questionnaireId).order('created_at', { ascending: false }),
+                    query,
                     supabase.from('questions').select('id, text, type').eq('questionnaire_id', questionnaireId),
-                    // --- PERBAIKAN DI SINI: Ubah select() menjadi '*' ---
                     supabase.from('answers').select('*'),
                 ]);
                 
@@ -56,7 +70,6 @@ export default function RawDataPage() {
                 setRawResponses(responsesData);
                 setRawQuestions(questionsRes.data || []);
 
-                // Filter answers client-side untuk mengurangi beban join di DB
                 const responseIds = responsesData.map(r => r.id);
                 setRawAnswers((answersRes.data || []).filter(a => responseIds.includes(a.response_id)));
 
@@ -67,7 +80,7 @@ export default function RawDataPage() {
             }
         };
         fetchData();
-    }, [questionnaireId, supabase]);
+    }, [questionnaireId, supabase, dateRange, jenisKelamin, pekerjaan, jaminan]);
 
     const handleSort = (key: keyof Response) => {
         const direction = (sortConfig?.key === key && sortConfig.direction === 'asc') ? 'desc' : 'asc';
@@ -80,15 +93,17 @@ export default function RawDataPage() {
             const lowerSearch = searchTerm.toLowerCase();
             data = data.filter(res =>
                 res.nama.toLowerCase().includes(lowerSearch) ||
-                res.pekerjaan.toLowerCase().includes(lowerSearch) ||
-                res.jaminan.toLowerCase().includes(lowerSearch) ||
+                (res.pekerjaan && res.pekerjaan.toLowerCase().includes(lowerSearch)) ||
+                (res.jaminan && res.jaminan.toLowerCase().includes(lowerSearch)) ||
                 res.jenis_kelamin.toLowerCase().includes(lowerSearch)
             );
         }
         if (sortConfig) {
             data.sort((a, b) => {
-                if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
-                if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
+                const valA = a[sortConfig.key] || '';
+                const valB = b[sortConfig.key] || '';
+                if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
             });
         }
@@ -104,13 +119,9 @@ export default function RawDataPage() {
             });
           
             return {
-                'Waktu Submit': response.created_at,
-                'Nama': response.nama,
-                'Usia': response.usia,
-                'Jenis Kelamin': response.jenis_kelamin,
-                'Pekerjaan': response.pekerjaan,
-                'Jaminan': response.jaminan,
-                ...answersObject
+                'Waktu Submit': response.created_at, 'Nama': response.nama, 'Usia': response.usia,
+                'Jenis Kelamin': response.jenis_kelamin, 'Pekerjaan': response.pekerjaan,
+                'Jaminan': response.jaminan, 'Saran': response.saran, ...answersObject
             };
         });
         downloadCSV(exportData, `data_responden_${new Date().toISOString().slice(0, 10)}.csv`);
@@ -121,10 +132,10 @@ export default function RawDataPage() {
 
     return (
         <div className="bg-white p-6 rounded-lg shadow">
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
                 <h2 className="text-xl font-semibold text-gray-900">Data Mentah Responden</h2>
                 <div className="flex items-center space-x-4">
-                     <input type="text" placeholder="Cari berdasarkan nama, pekerjaan, dll..." className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                     <input type="text" placeholder="Cari..." className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary w-full md:w-auto" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                      <button onClick={exportToCSV} className="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-md text-sm">
                         Export CSV
                     </button>
@@ -136,7 +147,7 @@ export default function RawDataPage() {
                         <tr>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('nama')}>Nama</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('usia')}>Usia</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" onClick={() => handleSort('jenis_kelamin')}>Jenis Kelamin</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Saran</th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Jawaban</th>
                         </tr>
                     </thead>
@@ -145,7 +156,7 @@ export default function RawDataPage() {
                             <tr key={response.id}>
                                 <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-800">{response.nama}</td>
                                 <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{response.usia}</td>
-                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">{response.jenis_kelamin}</td>
+                                <td className="px-4 py-4 text-sm text-gray-500 max-w-xs whitespace-normal">{response.saran}</td>
                                 <td className="px-4 py-4 text-sm text-gray-500 max-w-lg whitespace-normal">
                                     {rawAnswers.filter(a => a.response_id === response.id)
                                     .map(a => {
